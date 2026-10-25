@@ -10,6 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+
+# Install numpy first (required by pkuseg / chatterbox-tts build)
+RUN pip install --no-cache-dir "numpy>=1.24.0,<1.26.0"
+
+# Then the rest
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
@@ -25,4 +30,5 @@ RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', de
 
 EXPOSE 8000
 
+# Par défaut : serveur HTTP. Pour WebSocket : override la commande
 CMD ["uvicorn", "pipeline_server:app", "--host", "0.0.0.0", "--port", "8000"]
