@@ -27,6 +27,17 @@ Mini serveur FastAPI pour reconnaissance d'émotions (français) + pipeline comp
 
 Connexion persistante → faible latence, faible overhead mémoire/CPU pour le robot.
 
+### Client de test Python
+
+```bash
+pip install websockets
+python client_ws.py --wav test.wav
+# ou
+python client_ws.py --wav test.wav --url ws://192.168.1.10:8000/ws/robot
+```
+
+Le client sauvegarde la réponse TTS dans `response_tts.wav`.
+
 ## Démarrage
 
 ```bash
