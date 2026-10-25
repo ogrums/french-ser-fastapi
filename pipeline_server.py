@@ -49,6 +49,10 @@ async def root():
         }
     }
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.post("/v1/audio/emotions")
 async def emotions(file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:

@@ -59,6 +59,10 @@ async def root():
         "description": "Persistent connection. Set TTS_ENGINE=pocket for streaming Pocket TTS."
     }
 
+@app.get("/health")
+async def health():
+    return {"status": "ok", "tts_engine": TTS_ENGINE}
+
 @app.websocket("/ws/robot")
 async def robot_websocket(websocket: WebSocket):
     await websocket.accept()
