@@ -1,86 +1,46 @@
-# Robot Emotion Pipeline API
+# French SER + Pipeline FastAPI (Robot)
 
-Serveur FastAPI pour un petit robot capable de :
-1. **Reconnaître l'émotion** dans la voix (modèle Lajavaness français)
-2. **Transcrire** l'audio (Whisper)
-3. **Générer une réponse vocale émotionnelle** (Chatterbox Multilingual)
+Mini serveur FastAPI pour reconnaissance d'émotions (français) + pipeline complet (SER + ASR + TTS) destiné à un petit robot.
 
-## Modèles utilisés
+## Endpoints HTTP classiques
 
-| Tâche | Modèle | Taille | Notes |
-|-------|--------|--------|-------|
-| SER (émotion) | `Lajavaness/wav2vec2-lg-xlsr-fr-speech-emotion-recognition` | ~300M | Français réel, 5 classes |
-| ASR | Whisper `small` (faster-whisper) | ~500M | Bon en français, CPU ok |
-| TTS émotionnel | Chatterbox Multilingual | ~500M | 23 langues, contrôle `exaggeration` |
+- `POST /v1/audio/emotions` — émotion uniquement
+- `POST /v1/audio/transcriptions` — transcription
+- `POST /v1/audio/analyze` — émotion + transcription
+- `POST /v1/audio/speech` — TTS (Chatterbox, paramètre `exaggeration`)
 
-Les modèles SER et Whisper sont **pré-téléchargés** dans le Docker. Chatterbox se télécharge au premier appel TTS.
+## WebSocket (recommandé pour le robot)
 
-## Classes d'émotions (SER)
+**Endpoint** : `ws://host:8000/ws/robot`
 
-- Pleased, Relaxed, Neutral, Sad, Tension
+1. Le robot envoie un WAV (bytes).
+2. Le serveur répond avec un JSON :
+   ```json
+   {
+     "type": "analysis",
+     "emotion": {"label": "joy", "score": 0.87},
+     "transcription": "Bonjour, je vais bien",
+     "emotions_all": [...]
+   }
+   ```
+3. Puis envoie l'audio TTS (bytes) + un JSON `{"type": "tts_done"}`.
 
-## Lancement
+Connexion persistante → faible latence, faible overhead mémoire/CPU pour le robot.
 
-### Docker (recommandé)
+## Démarrage
 
 ```bash
-git clone https://github.com/ogrums/french-ser-fastapi.git
-cd french-ser-fastapi
 docker compose up --build
+# ou localement :
+# uvicorn websocket_server:app --host 0.0.0.0 --port 8000
 ```
 
-Le build télécharge les modèles (peut prendre plusieurs minutes la première fois).
+## Modèles
 
-### Local
+- SER : Lajavaness/wav2vec2-lg-xlsr-fr-speech-emotion-recognition
+- ASR : faster-whisper `small` (CPU)
+- TTS : Chatterbox Multilingual (chargé à la demande)
 
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python pipeline_server.py
-```
+## Ressources (petit robot)
 
-## Endpoints
-
-### 1. Émotion seule
-```bash
-curl -X POST http://localhost:8000/v1/audio/emotions -F "file=@audio.wav"
-```
-
-### 2. Transcription
-```bash
-curl -X POST http://localhost:8000/v1/audio/transcriptions -F "file=@audio.wav" -F "language=fr"
-```
-
-### 3. Analyse complète (émotion + texte)
-```bash
-curl -X POST http://localhost:8000/v1/audio/analyze -F "file=@audio.wav"
-```
-
-### 4. TTS avec émotion
-```bash
-curl -X POST http://localhost:8000/v1/audio/speech \
-  -F "text=Bonjour, je suis content de te voir !" \
-  -F "language=fr" \
-  -F "exaggeration=0.7" \
-  --output reponse.wav
-```
-
-`exaggeration` : 0.25 = calme/neutre, 0.5 = normal, 0.7+ = plus expressif/dramatique.
-
-## Pipeline robot typique
-
-1. Robot enregistre 3-10s d'audio via micro
-2. `POST /v1/audio/analyze` → obtient émotion + transcription
-3. LLM externe génère une réponse adaptée à l'émotion
-4. `POST /v1/audio/speech` avec le texte + `exaggeration` selon l'émotion détectée
-5. Robot joue le fichier audio
-
-## Notes matérielles
-
-- CPU suffit pour SER + Whisper small.
-- TTS Chatterbox est plus agréable avec un GPU (CUDA).
-- Audio recommandé : 16 kHz mono WAV.
-
-## Licence
-
-Modèles sous leurs licences respectives (Apache 2.0 pour Lajavaness, etc.). Code fourni tel quel.
+Les modèles sont chargés **une seule fois**. La connexion WebSocket elle-même est très légère. Adapté pour garder la connexion ouverte en permanence.
