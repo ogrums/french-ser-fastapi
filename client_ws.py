@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Client de test pour le WebSocket du robot.
+Gère à la fois Chatterbox (WAV unique) et Pocket TTS (chunks PCM).
+
 Usage :
   python client_ws.py --wav test.wav
   python client_ws.py --wav test.wav --url ws://localhost:8000/ws/robot
@@ -29,25 +31,50 @@ async def test_websocket(url: str, wav_path: str):
     print(f"Envoi de {len(audio_bytes)} octets ({wav_file.name})")
 
     async with websockets.connect(url) as ws:
-        # Envoi de l'audio
         await ws.send(audio_bytes)
 
-        # Réception des messages
+        pcm_chunks = []
+        sample_rate = 24000
+
         while True:
             msg = await ws.recv()
             if isinstance(msg, bytes):
-                out_path = "response_tts.wav"
-                Path(out_path).write_bytes(msg)
-                print(f"→ Audio TTS reçu et sauvegardé : {out_path} ({len(msg)} octets)")
+                # Chunk audio (PCM ou WAV)
+                pcm_chunks.append(msg)
+                print(f"→ Chunk audio reçu : {len(msg)} octets")
             else:
                 try:
                     data = json.loads(msg)
                     print(f"→ JSON : {json.dumps(data, ensure_ascii=False, indent=2)}")
+
+                    if data.get("type") == "tts_start":
+                        sample_rate = data.get("sample_rate", 24000)
+                        print(f"Streaming démarré (sample_rate={sample_rate})")
+
                     if data.get("type") == "tts_done":
                         print("Terminé.")
                         break
                 except json.JSONDecodeError:
                     print(f"→ Message texte : {msg}")
+
+        # Sauvegarde
+        if pcm_chunks:
+            # Si un seul gros chunk → probablement un WAV Chatterbox
+            if len(pcm_chunks) == 1 and len(pcm_chunks[0]) > 1000:
+                out_path = "response_tts.wav"
+                Path(out_path).write_bytes(pcm_chunks[0])
+                print(f"WAV sauvegardé : {out_path}")
+            else:
+                # Chunks PCM → assembler en WAV simple
+                import wave
+                out_path = "response_tts_pcm.wav"
+                with wave.open(out_path, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)  # 16-bit
+                    wf.setframerate(sample_rate)
+                    for chunk in pcm_chunks:
+                        wf.writeframes(chunk)
+                print(f"PCM assemblé en WAV : {out_path}")
 
 
 def main():
