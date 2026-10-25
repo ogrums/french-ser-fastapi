@@ -8,4 +8,10 @@ services:
       - "8000:8000"
     environment:
       - TTS_ENGINE=chatterbox    # doit matcher le build arg
+      - HF_HOME=/data/huggingface
+      - TRANSFORMERS_CACHE=/data/huggingface
+      - HF_HUB_CACHE=/data/huggingface
+      - TORCH_HOME=/data/torch
+    volumes:
+      - ./data:/data
     restart: unless-stopped
