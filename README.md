@@ -1,50 +1,45 @@
 # French SER + Pipeline FastAPI (Robot)
 
-Mini serveur FastAPI pour reconnaissance d'émotions (français) + pipeline complet (SER + ASR + TTS) destiné à un petit robot.
+Mini serveur FastAPI pour reconnaissance d'émotions (français) + pipeline complet (SER + ASR + TTS).
 
-## Toggle TTS
+## Deux moteurs TTS (séparés à cause des conflits numpy)
 
-Variable d'environnement :
+| Moteur | Fichier | Numpy | Usage |
+|--------|---------|-------|-------|
+| **Chatterbox** | `requirements-chatterbox.txt` | < 2 | Contrôle d'émotion (`exaggeration`) |
+| **Pocket TTS** | `requirements-pocket.txt` | ≥ 2 | Streaming CPU, français |
 
-- `TTS_ENGINE=chatterbox` (défaut) — TTS complet, contrôle d'émotion via exaggeration
-- `TTS_ENGINE=pocket` — Pocket TTS (CPU, streaming, français, voix "estelle")
+## Build Docker
 
-Exemple :
 ```bash
-TTS_ENGINE=pocket docker compose up --build
+# Chatterbox (défaut)
+docker compose up --build
+
+# Pocket TTS
+docker compose build --build-arg TTS_ENGINE=pocket
+# puis dans docker-compose.yml change TTS_ENGINE=pocket
+docker compose up
+```
+
+Ou en une commande :
+
+```bash
+docker compose build --build-arg TTS_ENGINE=pocket && \
+docker compose up -e TTS_ENGINE=pocket
 ```
 
 ## WebSocket
 
-**Endpoint** : `ws://host:8000/ws/robot`
+`ws://host:8000/ws/robot`
 
-### Protocole
+- Envoie un WAV (bytes)
+- Reçoit JSON `analysis`
+- Puis audio (WAV complet ou chunks PCM selon le moteur)
+- Puis JSON `tts_done`
 
-1. Client envoie un WAV (bytes).
-2. Serveur envoie JSON `analysis` (émotion + transcription).
-3. Si `TTS_ENGINE=pocket` :
-   - JSON `tts_start` (sample_rate, format)
-   - Plusieurs messages **bytes** (chunks PCM 16-bit)
-   - JSON `tts_done`
-4. Si Chatterbox :
-   - Un seul message **bytes** (WAV complet)
-   - JSON `tts_done`
-
-### Client de test
+## Client de test
 
 ```bash
 pip install websockets
 python client_ws.py --wav test.wav
 ```
-
-## Démarrage
-
-```bash
-docker compose up --build
-```
-
-## Modèles
-
-- SER : Lajavaness/wav2vec2-lg-xlsr-fr-speech-emotion-recognition
-- ASR : faster-whisper `small`
-- TTS : Chatterbox **ou** Pocket TTS (toggle)

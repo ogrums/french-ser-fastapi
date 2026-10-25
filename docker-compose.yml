@@ -2,15 +2,12 @@ version: '3.8'
 
 services:
   ser-api:
-    build: .
+    build:
+      context: .
+      args:
+        TTS_ENGINE: chatterbox   # ou "pocket"
     ports:
       - "8000:8000"
+    environment:
+      - TTS_ENGINE=chatterbox    # doit matcher le build arg
     restart: unless-stopped
-    # Uncomment if you have a GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
