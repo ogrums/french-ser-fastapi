@@ -3,7 +3,7 @@ uvicorn[standard]>=0.30.0
 transformers>=4.40.0
 torch>=2.2.0
 torchaudio>=2.2.0
-librosa>=0.10.0
+librosa==0.11.0
 python-multipart>=0.0.9
 faster-whisper>=1.0.0
 chatterbox-tts>=0.1.4
