@@ -7,13 +7,18 @@ import tempfile
 import os
 import logging
 import json
+import os as os_env
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Robot Emotion Pipeline - WebSocket")
 
-# --- Modèles (chargés une fois) ---
+# Toggle : "pocket" (streaming CPU) ou "chatterbox" (défaut)
+TTS_ENGINE = os_env.getenv("TTS_ENGINE", "chatterbox").lower()
+logger.info(f"TTS engine : {TTS_ENGINE}")
+
+# --- Modèles ---
 SER_MODEL = "Lajavaness/wav2vec2-lg-xlsr-fr-speech-emotion-recognition"
 WHISPER_SIZE = "small"
 
@@ -24,6 +29,8 @@ logger.info("Chargement Whisper...")
 whisper_model = WhisperModel(WHISPER_SIZE, device="cpu", compute_type="int8")
 
 chatterbox_model = None
+pocket_model = None
+pocket_voice = None
 
 def get_chatterbox():
     global chatterbox_model
@@ -34,11 +41,22 @@ def get_chatterbox():
         chatterbox_model = ChatterboxMultilingualTTS.from_pretrained(device=device)
     return chatterbox_model
 
+def get_pocket():
+    global pocket_model, pocket_voice
+    if pocket_model is None:
+        logger.info("Chargement Pocket TTS (français)...")
+        from pocket_tts import TTSModel
+        pocket_model = TTSModel.load_model(language="french")
+        # Voix française par défaut
+        pocket_voice = pocket_model.get_state_for_audio_prompt("estelle")
+    return pocket_model, pocket_voice
+
 @app.get("/")
 async def root():
     return {
         "websocket": "ws://host:8000/ws/robot",
-        "description": "Persistent connection for robot: send WAV bytes, receive analysis JSON + TTS audio"
+        "tts_engine": TTS_ENGINE,
+        "description": "Persistent connection. Set TTS_ENGINE=pocket for streaming Pocket TTS."
     }
 
 @app.websocket("/ws/robot")
@@ -57,15 +75,13 @@ async def robot_websocket(websocket: WebSocket):
                 audio_path = tmp.name
 
             try:
-                # Émotion
+                # Émotion + transcription
                 ser_results = ser_classifier(audio_path)
                 top_emotion = max(ser_results, key=lambda x: x["score"])
 
-                # Transcription
                 segments, info = whisper_model.transcribe(audio_path, language="fr")
                 text = " ".join([seg.text.strip() for seg in segments])
 
-                # Résultat intermédiaire
                 await websocket.send_json({
                     "type": "analysis",
                     "emotion": {"label": top_emotion["label"], "score": round(top_emotion["score"], 4)},
@@ -73,8 +89,25 @@ async def robot_websocket(websocket: WebSocket):
                     "emotions_all": [{"label": r["label"], "score": round(r["score"], 4)} for r in ser_results]
                 })
 
-                # TTS si texte
-                if text.strip():
+                if not text.strip():
+                    await websocket.send_json({"type": "tts_done"})
+                    continue
+
+                # --- TTS ---
+                if TTS_ENGINE == "pocket":
+                    model, voice = get_pocket()
+                    await websocket.send_json({"type": "tts_start", "sample_rate": 24000, "format": "pcm_s16le"})
+
+                    # Streaming chunks
+                    for chunk in model.generate_audio_stream(voice, text):
+                        # Convert tensor to PCM 16-bit bytes
+                        pcm = (chunk.numpy() * 32767).astype("int16").tobytes()
+                        await websocket.send_bytes(pcm)
+
+                    await websocket.send_json({"type": "tts_done"})
+
+                else:
+                    # Chatterbox (non-streaming)
                     model = get_chatterbox()
                     exaggeration = 0.65 if top_emotion["label"] in ["anger", "joy", "surprise"] else 0.4
                     wav = model.generate(text, language_id="fr", exaggeration=exaggeration)

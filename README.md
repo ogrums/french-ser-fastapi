@@ -2,56 +2,49 @@
 
 Mini serveur FastAPI pour reconnaissance d'émotions (français) + pipeline complet (SER + ASR + TTS) destiné à un petit robot.
 
-## Endpoints HTTP classiques
+## Toggle TTS
 
-- `POST /v1/audio/emotions` — émotion uniquement
-- `POST /v1/audio/transcriptions` — transcription
-- `POST /v1/audio/analyze` — émotion + transcription
-- `POST /v1/audio/speech` — TTS (Chatterbox, paramètre `exaggeration`)
+Variable d'environnement :
 
-## WebSocket (recommandé pour le robot)
+- `TTS_ENGINE=chatterbox` (défaut) — TTS complet, contrôle d'émotion via exaggeration
+- `TTS_ENGINE=pocket` — Pocket TTS (CPU, streaming, français, voix "estelle")
+
+Exemple :
+```bash
+TTS_ENGINE=pocket docker compose up --build
+```
+
+## WebSocket
 
 **Endpoint** : `ws://host:8000/ws/robot`
 
-1. Le robot envoie un WAV (bytes).
-2. Le serveur répond avec un JSON :
-   ```json
-   {
-     "type": "analysis",
-     "emotion": {"label": "joy", "score": 0.87},
-     "transcription": "Bonjour, je vais bien",
-     "emotions_all": [...]
-   }
-   ```
-3. Puis envoie l'audio TTS (bytes) + un JSON `{"type": "tts_done"}`.
+### Protocole
 
-Connexion persistante → faible latence, faible overhead mémoire/CPU pour le robot.
+1. Client envoie un WAV (bytes).
+2. Serveur envoie JSON `analysis` (émotion + transcription).
+3. Si `TTS_ENGINE=pocket` :
+   - JSON `tts_start` (sample_rate, format)
+   - Plusieurs messages **bytes** (chunks PCM 16-bit)
+   - JSON `tts_done`
+4. Si Chatterbox :
+   - Un seul message **bytes** (WAV complet)
+   - JSON `tts_done`
 
-### Client de test Python
+### Client de test
 
 ```bash
 pip install websockets
 python client_ws.py --wav test.wav
-# ou
-python client_ws.py --wav test.wav --url ws://192.168.1.10:8000/ws/robot
 ```
-
-Le client sauvegarde la réponse TTS dans `response_tts.wav`.
 
 ## Démarrage
 
 ```bash
 docker compose up --build
-# ou localement :
-# uvicorn websocket_server:app --host 0.0.0.0 --port 8000
 ```
 
 ## Modèles
 
 - SER : Lajavaness/wav2vec2-lg-xlsr-fr-speech-emotion-recognition
-- ASR : faster-whisper `small` (CPU)
-- TTS : Chatterbox Multilingual (chargé à la demande)
-
-## Ressources (petit robot)
-
-Les modèles sont chargés **une seule fois**. La connexion WebSocket elle-même est très légère. Adapté pour garder la connexion ouverte en permanence.
+- ASR : faster-whisper `small`
+- TTS : Chatterbox **ou** Pocket TTS (toggle)
